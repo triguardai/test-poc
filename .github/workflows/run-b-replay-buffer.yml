@@ -1,0 +1,97 @@
+name: Replay Claude Inline Comment Buffer
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_pr:
+        description: "Open PR number in repo-b that should receive the stale comment"
+        required: true
+      expected_body_marker:
+        description: "Exact marker seeded in repo-a"
+        required: true
+
+jobs:
+  replay-buffer:
+    # Replace self-hosted with the exact same label used in repo-a.
+    runs-on: [self-hosted, self-hosted]
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Show runner identity before replay
+        shell: bash
+        run: |
+          sha256_file() {
+            if [ -f "$1" ]; then
+              if command -v sha256sum >/dev/null 2>&1; then
+                sha256sum "$1" | awk '{print $1}'
+              else
+                shasum -a 256 "$1" | awk '{print $1}'
+              fi
+            else
+              echo ABSENT
+            fi
+          }
+          echo "RUNNER_NAME=${{ runner.name }}"
+          echo "HOSTNAME=$(hostname)"
+          echo "RUNNER_TEMP=${RUNNER_TEMP:-UNSET}"
+          echo "RUN_B_EXPECTED_BODY=${{ inputs.expected_body_marker }}"
+          echo "BUFFER_BEFORE=$(test -f /tmp/inline-comments-buffer.jsonl && wc -l < /tmp/inline-comments-buffer.jsonl || echo 0)"
+          echo "BUFFER_SHA256_BEFORE_REPLAY=$(sha256_file /tmp/inline-comments-buffer.jsonl)"
+          ls -l /tmp/inline-comments-buffer.jsonl || true
+
+      - name: Checkout owned repo with helper scripts
+        uses: actions/checkout@v4
+
+      - name: Checkout claude-code-action source
+        uses: actions/checkout@v4
+        with:
+          repository: anthropics/claude-code-action
+          ref: 73c91f04a832f76c606b0c6a3adaa393714cbd81
+          path: claude-code-action
+
+      - name: Run the real post-buffered-inline-comments entrypoint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ inputs.target_pr }}
+          ANTHROPIC_API_KEY: ""
+        run: |
+          bun --no-env-file \
+            --config="$GITHUB_WORKSPACE/claude-code-action/bunfig.toml" \
+            --tsconfig-override="$GITHUB_WORKSPACE/claude-code-action/tsconfig.json" \
+            run "$GITHUB_WORKSPACE/claude-code-action/src/entrypoints/post-buffered-inline-comments.ts"
+
+      - name: Verify the stale comment exists in repo-b PR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node poc/verify-pr-inline-comment.mjs \
+            --owner "${{ github.repository_owner }}" \
+            --repo "${{ github.event.repository.name }}" \
+            --pr "${{ inputs.target_pr }}" \
+            --token "$GITHUB_TOKEN" \
+            --match "${{ inputs.expected_body_marker }}"
+
+      - name: Show buffer after replay
+        shell: bash
+        run: |
+          sha256_file() {
+            if [ -f "$1" ]; then
+              if command -v sha256sum >/dev/null 2>&1; then
+                sha256sum "$1" | awk '{print $1}'
+              else
+                shasum -a 256 "$1" | awk '{print $1}'
+              fi
+            else
+              echo ABSENT
+            fi
+          }
+          echo "RUNNER_NAME=${{ runner.name }}"
+          echo "HOSTNAME=$(hostname)"
+          echo "RUNNER_TEMP=${RUNNER_TEMP:-UNSET}"
+          echo "RUN_B_EXPECTED_BODY=${{ inputs.expected_body_marker }}"
+          echo "BUFFER_AFTER=$(test -f /tmp/inline-comments-buffer.jsonl && wc -l < /tmp/inline-comments-buffer.jsonl || echo 0)"
+          echo "BUFFER_SHA256_AFTER_REPLAY=$(sha256_file /tmp/inline-comments-buffer.jsonl)"
+          ls -l /tmp/inline-comments-buffer.jsonl || true
