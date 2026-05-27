@@ -50,6 +50,20 @@ jobs:
           ref: 73c91f04a832f76c606b0c6a3adaa393714cbd81
           path: claude-code-action
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install claude-code-action dependencies
+        working-directory: ${{ github.workspace }}/claude-code-action
+        run: |
+          if [ -f bun.lockb ] || [ -f bun.lock ]; then
+            bun install --frozen-lockfile || bun install
+          else
+            bun install
+          fi
+
       - name: Run the real post-buffered-inline-comments entrypoint
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -62,15 +76,6 @@ jobs:
             --config="$GITHUB_WORKSPACE/claude-code-action/bunfig.toml" \
             --tsconfig-override="$GITHUB_WORKSPACE/claude-code-action/tsconfig.json" \
             run "$GITHUB_WORKSPACE/claude-code-action/src/entrypoints/post-buffered-inline-comments.ts"
-
-      - name: Install claude-code-action dependencies
-        working-directory: ${{ github.workspace }}/claude-code-action
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
 
       - name: Verify the stale comment exists in repo-b PR
         env:
