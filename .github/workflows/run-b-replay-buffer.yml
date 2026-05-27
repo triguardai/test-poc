@@ -63,6 +63,15 @@ jobs:
             --tsconfig-override="$GITHUB_WORKSPACE/claude-code-action/tsconfig.json" \
             run "$GITHUB_WORKSPACE/claude-code-action/src/entrypoints/post-buffered-inline-comments.ts"
 
+      - name: Install claude-code-action dependencies
+        working-directory: ${{ github.workspace }}/claude-code-action
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
       - name: Verify the stale comment exists in repo-b PR
         env:
           GITHUB_TOKEN: ${{ github.token }}
